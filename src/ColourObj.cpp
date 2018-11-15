@@ -1,56 +1,48 @@
 #include "ColourObj.h"
-#include "boost/spirit.hpp"
 #include <ngl/NGLStream.h>
-// make a namespace for our parser to save writing boost::spirit:: all the time
-namespace spt=boost::spirit;
 
-// syntactic sugar for specifying our grammar
-typedef spt::rule<spt::phrase_scanner_t> srule;
 #include <ngl/VAOFactory.h>
 #include <ngl/SimpleVAO.h>
+#include <ngl/pystring.h>
+
+namespace ps=pystring;
 
 
-ColourObj::ColourObj(const std::string& _fname  , bool _calcBB)  noexcept : ngl::Obj()
+ColourObj::ColourObj(const std::string& _fname  , ngl::Obj::CalcBB _calcBB)  noexcept : ngl::Obj()
 {
-  m_vbo=false;
-  m_ext=0;
-  // set default values
-  m_nVerts=m_nNorm=m_nTex=m_nFaces=0;
-  //set the default extents to 0
-  m_maxX=0.0f; m_maxY=0.0f; m_maxZ=0.0f;
-  m_minX=0.0f; m_minY=0.0f; m_minZ=0.0f;
-  m_nNorm=m_nTex=0;
-
-  // load the file in
-  m_loaded=load(_fname,_calcBB);
-
-  m_texture = false;
+  if ( load(_fname,_calcBB) == false)
+    {
+      ngl::NGLMessage::addError(fmt::format("Error loading file {0} ",_fname.data()));
+      exit(EXIT_FAILURE);
+    }
 
 }
 
 
 
-void ColourObj::parseVertex( const char *_begin )  noexcept
+bool ColourObj::parseVertex(std::vector<std::string> &_tokens) noexcept
 {
-  //std::cout<<"ColourObj Parse\n";
-  std::vector<ngl::Real> values;
-  // here is the parse rule to load the data into a vector (above)
-  srule vertex = "v" >> spt::real_p[spt::append(values)] >>
-                        spt::real_p[spt::append(values)] >>
-                        spt::real_p[spt::append(values)] >>
-                        spt::real_p[spt::append(values)] >>
-                        spt::real_p[spt::append(values)] >>
-                        spt::real_p[spt::append(values)];
+  bool parsedOK=true;
+  try
+  {
+    float x=std::stof(_tokens[1]);
+    float y=std::stof(_tokens[2]);
+    float z=std::stof(_tokens[3]);
+    float r=std::stof(_tokens[4]);
+    float g=std::stof(_tokens[5]);
+    float b=std::stof(_tokens[6]);
 
 
-  // now parse the data
-  spt::parse_info<> result = spt::parse(_begin, vertex, spt::space_p);
-  // should check this at some stage
-  NGL_UNUSED(result);
-  // and add it to our vert list in abstact mesh parent
-  m_verts.push_back(ngl::Vec3(values[0],values[1],values[2]));
-  m_colours.push_back(ngl::Vec3(values[3],values[4],values[5]));
-
+    m_verts.push_back({x,y,z});
+    m_colours.push_back({r,g,b});
+    ++m_currentVertexOffset;
+  }
+  catch (std::invalid_argument)
+  {
+    ngl::NGLMessage::addError("problem converting Obj file vertex");
+    parsedOK=false;
+  }
+  return parsedOK;
 }
 
 
@@ -59,14 +51,14 @@ void ColourObj::createColourVAO() noexcept
 
   struct VertData
   {
-    GLfloat u; // tex cords
-    GLfloat v; // tex cords
-    GLfloat nx; // normal from obj mesh
-    GLfloat ny;
-    GLfloat nz;
     GLfloat x; // position from obj
     GLfloat y;
     GLfloat z;
+    GLfloat nx; // normal from obj mesh
+    GLfloat ny;
+    GLfloat nz;
+    GLfloat u; // tex cords
+    GLfloat v; // tex cords
     GLfloat r; // colours
     GLfloat g;
     GLfloat b;
@@ -99,10 +91,10 @@ void ColourObj::createColourVAO() noexcept
 
 
   // loop for each of the faces
-  for(unsigned int i=0;i<m_nFaces;++i)
+  for(size_t i=0;i<m_face.size();++i)
   {
     // now for each triangle in the face (remember we ensured tri above)
-    for(unsigned int j=0;j<3;++j)
+    for(size_t j=0;j<3;++j)
     {
 
       // pack in the vertex data first
@@ -115,17 +107,17 @@ void ColourObj::createColourVAO() noexcept
       d.b=m_colours[m_face[i].m_vert[j]].m_z;
 
       // now if we have norms of tex (possibly could not) pack them as well
-      if(m_nNorm >0 && m_nTex > 0)
+      if(m_norm.size() >0 && m_uv.size() > 0)
       {
         d.nx=m_norm[m_face[i].m_norm[j]].m_x;
         d.ny=m_norm[m_face[i].m_norm[j]].m_y;
         d.nz=m_norm[m_face[i].m_norm[j]].m_z;
 
-        d.u=m_tex[m_face[i].m_tex[j]].m_x;
-        d.v=m_tex[m_face[i].m_tex[j]].m_y;
+        d.u=m_uv[m_face[i].m_uv[j]].m_x;
+        d.v=m_uv[m_face[i].m_uv[j]].m_y;
       }
       // now if neither are present (only verts like Zbrush models)
-      else if(m_nNorm ==0 && m_nTex==0)
+      else if(m_norm.size() ==0 &&  m_uv.size()==0)
       {
         d.nx=0;
         d.ny=0;
@@ -134,7 +126,7 @@ void ColourObj::createColourVAO() noexcept
         d.v=0;
       }
       // here we've got norms but not tex
-      else if(m_nNorm >0 && m_nTex==0)
+      else if(m_norm.size() >0 && m_uv.size()==0)
       {
         d.nx=m_norm[m_face[i].m_norm[j]].m_x;
         d.ny=m_norm[m_face[i].m_norm[j]].m_y;
@@ -143,20 +135,20 @@ void ColourObj::createColourVAO() noexcept
         d.v=0;
       }
       // here we've got tex but not norm least common
-      else if(m_nNorm ==0 && m_nTex>0)
+      else if(m_norm.size() ==0 && m_uv.size()>0)
       {
         d.nx=0;
         d.ny=0;
         d.nz=0;
-        d.u=m_tex[m_face[i].m_tex[j]].m_x;
-        d.v=m_tex[m_face[i].m_tex[j]].m_y;
+        d.u=m_uv[m_face[i].m_uv[j]].m_x;
+        d.v=m_uv[m_face[i].m_uv[j]].m_y;
       }
     vboMesh.push_back(d);
     }
   }
 
   // first we grab an instance of our VOA
-  m_vaoMesh.reset( ngl::VAOFactory::createVAO("simpleVAO",m_dataPackType));
+  m_vaoMesh=ngl::VAOFactory::createVAO("simpleVAO",m_dataPackType);
   // next we bind it so it's active for setting data
   m_vaoMesh->bind();
   m_meshSize=vboMesh.size();
@@ -165,21 +157,13 @@ void ColourObj::createColourVAO() noexcept
   // how much (in bytes) data we are copying
   // a pointer to the first element of data (in this case the address of the first element of the
   // std::vector
-  m_vaoMesh->setData(ngl::SimpleVAO::VertexData(m_meshSize*sizeof(VertData),vboMesh[0].u));
-  // in this case we have packed our data in interleaved format as follows
-  // u,v,nx,ny,nz,x,y,z
-  // If you look at the shader we have the following attributes being used
-  // attribute vec3 inVert; attribute 0
-  // attribute vec2 inUV; attribute 1
-  // attribute vec3 inNormal; attribure 2
+  m_vaoMesh->setData(ngl::SimpleVAO::VertexData(m_meshSize*sizeof(VertData),vboMesh[0].x));
   // so we need to set the vertexAttributePointer so the correct size and type as follows
-  // vertex is attribute 0 with x,y,z(3) parts of type GL_FLOAT, our complete packed data is
-  // sizeof(vertData) and the offset into the data structure for the first x component is 5 (u,v,nx,ny,nz)..x
-  m_vaoMesh->setVertexAttributePointer(0,3,GL_FLOAT,sizeof(VertData),5);
+  m_vaoMesh->setVertexAttributePointer(0,3,GL_FLOAT,sizeof(VertData),0);
   // uv same as above but starts at 0 and is attrib 1 and only u,v so 2
-  m_vaoMesh->setVertexAttributePointer(1,2,GL_FLOAT,sizeof(VertData),0);
+  m_vaoMesh->setVertexAttributePointer(1,3,GL_FLOAT,sizeof(VertData),3);
   // normal same as vertex only starts at position 2 (u,v)-> nx
-  m_vaoMesh->setVertexAttributePointer(2,3,GL_FLOAT,sizeof(VertData),2);
+  m_vaoMesh->setVertexAttributePointer(2,2,GL_FLOAT,sizeof(VertData),6);
   // set the colour
   m_vaoMesh->setVertexAttributePointer(3,3,GL_FLOAT,sizeof(VertData),8);
 

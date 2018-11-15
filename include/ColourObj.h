@@ -8,13 +8,14 @@ class ColourObj : public  ngl::Obj
 {
   public :
     ColourObj() noexcept : Obj() {}
-    explicit ColourObj( const std::string& _fname ,bool _calcBB=true) noexcept;
+    explicit ColourObj( const std::string& _fname ,ngl::Obj::CalcBB _calcBB=ngl::Obj::CalcBB::True ) noexcept;
 
     void createColourVAO() noexcept;
     //void draw();
 
   protected :
-    void parseVertex( const char *_begin )  noexcept override;
+    bool parseVertex(std::vector<std::string> &_tokens) noexcept override ;
+
     std::vector <ngl::Vec3> m_colours;
 };
 

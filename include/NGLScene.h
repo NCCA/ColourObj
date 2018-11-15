@@ -2,9 +2,8 @@
 #define NGLSCENE_H_
 #include "WindowParams.h"
 #include "ColourObj.h"
-#include <ngl/Camera.h>
-#include <ngl/Colour.h>
-#include <ngl/Light.h>
+#include <ngl/Vec3.h>
+#include <ngl/Mat4.h>
 #include <ngl/Text.h>
 #include <QOpenGLWindow>
 #include <memory>
@@ -63,7 +62,8 @@ private:
   //----------------------------------------------------------------------------------------------------------------------
   /// @brief Our Camera
   //----------------------------------------------------------------------------------------------------------------------
-  ngl::Camera m_cam;
+  ngl::Mat4 m_view;
+  ngl::Mat4 m_project;
   //----------------------------------------------------------------------------------------------------------------------
   /// @brief the model position for mouse movement
   //----------------------------------------------------------------------------------------------------------------------
